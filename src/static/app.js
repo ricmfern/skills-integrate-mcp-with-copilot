@@ -3,6 +3,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const signupContainer = document.getElementById("signup-container");
+  const userMenuToggle = document.getElementById("user-menu-toggle");
+  const userMenuPanel = document.getElementById("user-menu-panel");
+  const loginOpenButton = document.getElementById("login-open");
+  const teacherSession = document.getElementById("teacher-session");
+  const teacherUsername = document.getElementById("teacher-username");
+  const loginDialog = document.getElementById("login-dialog");
+  const loginForm = document.getElementById("login-form");
+  const loginMessage = document.getElementById("login-message");
+  let isLoggedIn = false;
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.replaceChildren(new Option("-- Select an activity --", ""));
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -29,8 +40,14 @@ document.addEventListener("DOMContentLoaded", () => {
               <ul class="participants-list">
                 ${details.participants
                   .map(
-                    (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                    (email) => `<li>
+                      <span class="participant-email">${email}</span>
+                      ${
+                        isLoggedIn
+                          ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Unregister ${email}">❌</button>`
+                          : ""
+                      }
+                    </li>`
                   )
                   .join("")}
               </ul>
@@ -57,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       // Add event listeners to delete buttons
-      document.querySelectorAll(".delete-btn").forEach((button) => {
+      activitiesList.querySelectorAll(".delete-btn").forEach((button) => {
         button.addEventListener("click", handleUnregister);
       });
     } catch (error) {
@@ -69,7 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Handle unregister functionality
   async function handleUnregister(event) {
-    const button = event.target;
+    const button = event.currentTarget;
     const activity = button.getAttribute("data-activity");
     const email = button.getAttribute("data-email");
 
@@ -155,6 +172,97 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  function updateAuthenticationUI(authenticated, username = "") {
+    isLoggedIn = authenticated;
+    signupContainer.classList.toggle("hidden", !authenticated);
+    loginOpenButton.classList.toggle("hidden", authenticated);
+    teacherSession.classList.toggle("hidden", !authenticated);
+    teacherUsername.textContent = username;
+  }
+
+  userMenuToggle.addEventListener("click", () => {
+    const isExpanded = userMenuToggle.getAttribute("aria-expanded") === "true";
+    userMenuToggle.setAttribute("aria-expanded", String(!isExpanded));
+    userMenuPanel.classList.toggle("hidden", isExpanded);
+  });
+
+  loginOpenButton.addEventListener("click", () => {
+    userMenuPanel.classList.add("hidden");
+    userMenuToggle.setAttribute("aria-expanded", "false");
+    loginMessage.classList.add("hidden");
+    loginMessage.textContent = "";
+    loginForm.reset();
+    loginDialog.showModal();
+  });
+
+  document.getElementById("login-cancel").addEventListener("click", () => {
+    loginDialog.close();
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    loginMessage.classList.add("hidden");
+
+    try {
+      const response = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("username").value,
+          password: document.getElementById("password").value,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || "Unable to log in");
+      }
+
+      const statusResponse = await fetch("/auth/me");
+      if (!statusResponse.ok) {
+        throw new Error("Unable to verify teacher login");
+      }
+      const status = await statusResponse.json();
+      if (!status.authenticated) {
+        throw new Error("Unable to verify teacher login");
+      }
+      updateAuthenticationUI(status.authenticated, status.username);
+      loginDialog.close();
+      await fetchActivities();
+    } catch (error) {
+      loginMessage.textContent = error.message || "Unable to log in";
+      loginMessage.className = "error";
+      loginMessage.setAttribute("role", "alert");
+      loginMessage.classList.remove("hidden");
+    }
+  });
+
+  document.getElementById("logout-button").addEventListener("click", async () => {
+    try {
+      const response = await fetch("/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Unable to log out");
+      }
+      updateAuthenticationUI(false);
+      userMenuPanel.classList.add("hidden");
+      userMenuToggle.setAttribute("aria-expanded", "false");
+      await fetchActivities();
+    } catch (error) {
+      messageDiv.textContent = error.message || "Unable to log out";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+    }
+  });
+
   // Initialize app
-  fetchActivities();
+  fetch("/auth/me")
+    .then((response) => response.json())
+    .then((status) => {
+      updateAuthenticationUI(status.authenticated, status.username);
+      return fetchActivities();
+    })
+    .catch((error) => {
+      console.error("Error checking teacher login:", error);
+      updateAuthenticationUI(false);
+      fetchActivities();
+    });
 });

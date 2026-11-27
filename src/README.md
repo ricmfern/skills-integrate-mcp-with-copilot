@@ -1,11 +1,12 @@
 # Mergington High School Activities API
 
-A super simple FastAPI application that allows students to view and sign up for extracurricular activities.
+A super simple FastAPI application that lets students view extracurricular activities and teachers manage signups.
 
 ## Features
 
 - View all available extracurricular activities
-- Sign up for activities
+- Teacher-only signup and unregister controls
+- Teacher login using an HTTP-only session cookie
 
 ## Getting Started
 
@@ -15,22 +16,38 @@ A super simple FastAPI application that allows students to view and sign up for 
    pip install fastapi uvicorn
    ```
 
-2. Run the application:
+2. Configure teacher credentials and a session-signing secret in the environment. These values must not be committed to the repository:
 
    ```
-   python app.py
+   export ADMIN_USERNAME="teacher"
+   export ADMIN_PASSWORD="<a strong teacher password>"
+   export ADMIN_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
    ```
 
-3. Open your browser and go to:
+   `ADMIN_SESSION_SECRET` must be at least 32 characters. Use a securely managed, stable secret in deployed environments.
+
+3. Run the application:
+
+   ```
+   uvicorn src.app:app --reload
+   ```
+
+4. Open your browser and go to:
    - API documentation: http://localhost:8000/docs
    - Alternative documentation: http://localhost:8000/redoc
 
 ## API Endpoints
 
-| Method | Endpoint                                                          | Description                                                         |
-| ------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/activities`                                                     | Get all activities with their details and current participant count |
-| POST   | `/activities/{activity_name}/signup?email=student@mergington.edu` | Sign up for an activity                                             |
+| Method | Endpoint                                                               | Description                                               |
+| ------ | ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| GET    | `/activities`                                                          | Get all activities and participant details               |
+| GET    | `/auth/me`                                                             | Check whether the current browser session is authenticated |
+| POST   | `/auth/login`                                                          | Log in with a JSON `username` and `password`              |
+| POST   | `/auth/logout`                                                         | End the current teacher session                           |
+| POST   | `/activities/{activity_name}/signup?email=student@mergington.edu`      | Teacher-only student signup                              |
+| DELETE | `/activities/{activity_name}/unregister?email=student@mergington.edu`  | Teacher-only student unregister                          |
+
+Activities and participant lists remain visible without logging in. Signup and unregister requests return `401` without a valid teacher session, or `503` if authentication has not been configured.
 
 ## Data Model
 
